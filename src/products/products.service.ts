@@ -1,9 +1,6 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  OnModuleInit,
-} from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { RpcException } from '@nestjs/microservices';
+
 import { PrismaClient } from '@prisma/client';
 
 import { CreateProductDto } from './dto/create-product.dto';
@@ -47,7 +44,7 @@ export class ProductsService extends PrismaClient implements OnModuleInit {
     };
   }
 
-  async findOne(id: number) {
+  async findById(id: number) {
     const product = await this.product.findFirst({
       where: {
         id,
@@ -56,13 +53,16 @@ export class ProductsService extends PrismaClient implements OnModuleInit {
     });
 
     if (!product)
-      throw new NotFoundException(`Product with id #${id} not found`);
+      throw new RpcException({
+        message: `Product with id #${id} not found`,
+        status: HttpStatus.BAD_REQUEST,
+      });
 
     return product;
   }
 
   async update(id: number, { id: __, ...updateProductDto }: UpdateProductDto) {
-    await this.findOne(id);
+    await this.findById(id);
 
     return this.product.update({
       where: {
@@ -72,8 +72,8 @@ export class ProductsService extends PrismaClient implements OnModuleInit {
     });
   }
 
-  async remove(id: number) {
-    await this.findOne(id);
+  async delete(id: number) {
+    await this.findById(id);
 
     return await this.product.update({
       where: { id },
@@ -81,5 +81,26 @@ export class ProductsService extends PrismaClient implements OnModuleInit {
         available: false,
       },
     });
+  }
+
+  async validateProduct(ids: number[]) {
+    // return ids;
+    ids = Array.from(new Set(ids));
+
+    const products = await this.product.findMany({
+      where: {
+        id: {
+          in: ids,
+        },
+      },
+    });
+
+    if (products.length !== ids.length)
+      throw new RpcException({
+        message: `Some products were not found`,
+        status: HttpStatus.BAD_REQUEST,
+      });
+
+    return products;
   }
 }
